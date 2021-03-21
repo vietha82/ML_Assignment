@@ -1,0 +1,120 @@
+---
+title: "ML_Assignment4"
+author: "V Ha"
+date: "March 21, 2021"
+output: html_document
+---
+##Practical Machine Learning Assignment
+
+###Synopsis
+One thing that people regularly do is quantify how  much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants.
+Our goal for this project is to predict a "Test" group of 6 participants with 20 activities from a training set that was supplied
+
+###Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+###Data Download, Processing and Cleaning
+```{r message=F, echo=F}
+library(data.table); library(ggplot2); library(caret); library(dplyr);library(corrplot);library(randomForest)
+#setwd("C:/Users/asian/Downloads")
+download.file('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv', 'training.csv')
+download.file('https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv', 'testing.csv')
+
+trainingData<-read.csv('training.csv')
+testingData<-read.csv('testing.csv')
+str(trainingData)
+```
+Upon inspection of the training Data set, we can see that there are multiple issues with the raw data. We can see that:
+
+1) the first few columns are not data sets, rather identifier and descriptor columns
+        
+2) There are many columns with data but the values contained show very little variance (ie,               basically the same data throughout)
+**Initial runs had my personal PC take a significant amount of time to process without                      success so this part became born out of necessity
+        
+3) There are many 'NA' values which would serve us no useful purpose
+
+Removing descriptors
+```{r}
+trainingData<-trainingData %>% select(!c(1:7))
+testingData<-testingData %>% select(!c(1:7))
+```
+
+Remove new zero variance time. Online research pointed me to the below for the removal of Near zero variance time. Please see link for additional info
+https://www.rdocumentation.org/packages/caret/versions/6.0-86/topics/nearZeroVar
+```{r}
+NZV<-nearZeroVar(trainingData)
+trainingData<-trainingData[,-NZV]
+testingData<-testingData[,-NZV]
+```
+Remove all columns where all values are NA
+```{r}
+trainingData<-trainingData[, colSums(is.na(trainingData)) == 0]
+testingData<-testingData[, colSums(is.na(testingData)) == 0]
+trainingData$classe<-factor(trainingData$classe)
+testingData$problem_id<-factor(testingData$problem_id)
+```
+###Data Seperation for Training and Testing
+A standard 70/30 split for data partitioning was created on the training data set along with a correlation plot which graphically shows us the strength of correlated variables
+```{r}
+inTrain<-createDataPartition(y=trainingData$classe, p=0.7, list=F)
+training<-trainingData[inTrain,]
+testing<-trainingData[-inTrain,]
+corData <- cor(training[,-53])
+corrplot(corData, method = "color", type = "lower", tl.cex = 0.5)
+```
+This analysis is a part of the principle component analysis. The closer the color towards dark blue, the greater the correlation. There are minimal correlations so we move right to the predictive modelling
+
+###Predictive modelling
+Three (3) models have been selected for trialing. 
+1) Random Forest
+2) Decision Tree
+3) Gradient Boosting
+
+###Model Generation
+```{r}
+mod1<-randomForest(classe~., data=training, method='class')#random forest model
+mod2<-train(classe ~ .,  data=training, method="rpart",  trControl = trainControl(method = "cv"))#decision tree model
+#generalized boosting
+fitcontrol <- trainControl(method="cv",number=5,allowParallel=TRUE)
+#Gradient boosting
+mod3 <- train(classe ~ ., data = training, method = "gbm", trControl = fitcontrol, 
+                   verbose = FALSE, na.action = na.omit)
+```
+###Prediction models on testing with accuracy
+```{r}
+#predictions
+pred1<-predict(mod1, testing)
+pred2<-predict(mod2, testing)
+pred3<-predict(mod3, testing)
+#confusion matrix
+accuracy1<-confusionMatrix(pred1, testing$classe)
+accuracy2<-confusionMatrix(pred2, testing$classe)
+accuracy3<-confusionMatrix(pred3, testing$classe)
+accuracy1$overall['Accuracy']
+accuracy2$overall['Accuracy']
+accuracy3$overall['Accuracy']
+```
+With the accuracy of the random forest and GBM models being above 95%, both models would be a good predictor. The decision tree modelling has much poorer prediction accuracy below 50%
+
+I decided to run the 2 final prediction models for both random forest and GBM on the testing data set
+
+###Final prediction on testing set
+```{r}
+predict(mod1, testingData)
+predict(mod3,testingData)
+```
+
+Outcomes are as per above with no differences between either the RF or GBM model
+As a reminder, outcomes are as follows:
+A: exactly according to the specification
+B: throwing the elbows to the front
+C: lifting the dumbbell only halfway
+D: lowering the dumbbell only halfway
+E: throwing the hips to the front
+
+
+
+
+
+
+
